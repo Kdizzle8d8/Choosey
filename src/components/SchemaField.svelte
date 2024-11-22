@@ -25,6 +25,11 @@
     updateChildMatches,
   }: Props = $props();
 
+  const fieldTypes = [
+    { value: "text", label: "Text" },
+    { value: "link", label: "Link" },
+  ];
+
   // Handle MaxMatches change
   const handleMaxMatchesChange = (e: Event) => {
     const input = e.currentTarget as HTMLInputElement;
@@ -38,12 +43,17 @@
 </script>
 
 <div class="flex flex-col gap-2">
-  <div class="flex gap-3">
+  <!-- First row: Field Name -->
+  <div class="flex items-center">
     <FieldInput
       label="Field Name"
       value={field.Name}
       onChange={(value) => (field.Name = value)}
     />
+  </div>
+
+  <!-- Second row: Max Matches and Type -->
+  <div class="flex items-center gap-4">
     <div class="flex items-center gap-2">
       <label class="text-sm text-inherit/70" for="max-matches">
         Max Matches
@@ -57,8 +67,22 @@
         oninput={handleMaxMatchesChange}
       />
     </div>
+
+    <div class="flex items-center gap-2">
+      <label for="field-type" class="text-sm text-inherit/70"> Type: </label>
+      <select
+        id="field-type"
+        class="px-2 py-1 rounded text-sm bg-black/20 border border-black/10 text-inherit"
+        bind:value={field.Type}
+      >
+        {#each fieldTypes as type}
+          <option value={type.value}>{type.label}</option>
+        {/each}
+      </select>
+    </div>
   </div>
 
+  <!-- Third row: Element Selector -->
   <div class="flex items-center gap-3">
     <span class="text-sm text-inherit/70">Element</span>
     <ElementSelector

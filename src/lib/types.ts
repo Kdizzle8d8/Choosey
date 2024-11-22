@@ -1,12 +1,9 @@
-export type FieldType = "text" | "number" | "date";
+export type FieldType = "text" | "link";
 
 export type StoredSchema = {
   Name: string;
   Parent: string | null;
-  urls: {
-    url: string;
-    active: boolean;
-  }[];
+  urls: string[];
   ParentMatch: {
     strategy: MatchStrategy;
   } | null;
@@ -22,10 +19,7 @@ export type StoredSchema = {
 export type Schema = {
   Name: string;
   Parent: HTMLElement | null;
-  urls: {
-    url: string;
-    active: boolean;
-  }[];
+  urls: string[];
   ParentMatch: {
     strategy: MatchStrategy;
     matches: HTMLElement[];

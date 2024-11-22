@@ -335,7 +335,7 @@
       ...schemas,
       {
         Name: "New Schema",
-        urls: [{ url: window.location.href, active: true }],
+        urls: [window.location.href],
         Parent: null,
         ParentMatch: null,
         Fields: [],
@@ -370,8 +370,9 @@
     let schemaJSON: {
       schemaName: string;
       parentElement: string;
-      fields: Record<string, string>;
+      fields: Record<string, { text: string; href?: string }>;
     }[] = [];
+
     schemas.forEach((schema) => {
       // Skip if no parent matches
       if (!schema.ParentMatch?.matches) return;
@@ -393,8 +394,23 @@
               parentMatch.contains(match)
             );
             if (fieldMatch) {
-              matchData.fields[field.Name] =
-                fieldMatch.textContent?.trim() || "";
+              switch (field.Type) {
+                case "link":
+                  matchData.fields[field.Name] = {
+                    text: fieldMatch.textContent?.trim() || "",
+                    href:
+                      fieldMatch instanceof HTMLAnchorElement
+                        ? fieldMatch.href
+                        : undefined,
+                  };
+                  break;
+                case "text":
+                default:
+                  matchData.fields[field.Name] = {
+                    text: fieldMatch.textContent?.trim() || "",
+                  };
+                  break;
+              }
             }
           }
         });
@@ -489,26 +505,16 @@
   const storedToSchema = async (stored: StoredSchema): Promise<Schema> => {
     console.log("Loading stored schema:", stored);
 
-    // Get parent element first
-    const parentElement = stored.Parent
-      ? (
-          await findMatches(
-            createElementFromHTML(stored.Parent),
-            stored.ParentMatch?.strategy || "exact"
-          )
-        )[0]
+    const oldParent = stored.Parent
+      ? createElementFromHTML(stored.Parent)
       : null;
 
-    console.log("Found parent element:", parentElement);
-
     // Find parent matches first
-    const parentMatches = parentElement
-      ? await findMatches(
-          parentElement,
-          stored.ParentMatch?.strategy || "exact"
-        )
+    const parentMatches = oldParent
+      ? await findMatches(oldParent, stored.ParentMatch?.strategy || "exact")
       : [];
 
+    const parentElement = parentMatches.length > 0 ? parentMatches[0] : null;
     // Then get field elements, ensuring they're children of parent matches
     const fields = await Promise.all(
       stored.Fields.map(async (field) => {
@@ -545,17 +551,20 @@
       Name: stored.Name,
       urls: stored.urls,
       Parent: parentElement,
-      ParentMatch: stored.ParentMatch
-        ? {
-            strategy: stored.ParentMatch.strategy,
-            matches: parentMatches,
-          }
-        : null,
+      ParentMatch: {
+        strategy: stored.ParentMatch?.strategy || "exact",
+        matches: parentMatches.filter((match) =>
+          parentElement?.contains(match)
+        ),
+      },
       Fields: fields,
     };
   };
-  const isSchemaActive = (schema: Schema) =>
-    schema.urls.some((url) => url.url === window.location.href && url.active);
+  const isSchemaActive = (schema: StoredSchema) => {
+    return Object.values(schema.urls).some(
+      (url) => url === window.location.href
+    );
+  };
 
   const saveSchemas = () => {
     const storedSchemas = schemas.map(schemaToStored);
@@ -563,21 +572,19 @@
     storage.setItem("local:schemas", storedSchemas);
   };
 
-  // Update loading logic
   onMount(() => {
     storage.getItem<StoredSchema[]>("local:schemas").then(async (result) => {
       if (result) {
-        // Load schemas one by one
-        const loadedSchemas = await Promise.all(result.map(storedToSchema));
+        // first only load schemas that are active
+        const loadedSchemas = await Promise.all(
+          result.filter(isSchemaActive).map(storedToSchema)
+        );
         schemas = loadedSchemas;
 
         if (!collapsed) {
-          // Run matches for each schema
           for (const schema of schemas) {
             if (schema.Parent && schema.ParentMatch?.strategy) {
-              if (isSchemaActive(schema)) {
-                await updateParentMatches(schema, schema.ParentMatch.strategy);
-              }
+              await updateParentMatches(schema, schema.ParentMatch.strategy);
             }
           }
         }
