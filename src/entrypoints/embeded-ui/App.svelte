@@ -7,7 +7,12 @@
   import FieldInput from "../../components/FieldInput.svelte";
   import ActionButton from "../../components/ActionButton.svelte";
   import SchemaField from "../../components/SchemaField.svelte";
-  import type { Schema, MatchStrategy, StoredSchema } from "../../lib/types";
+  import type {
+    Schema,
+    MatchStrategy,
+    StoredSchema,
+    EditingSchema,
+  } from "../../lib/types";
   import {
     findMatches,
     findChildMatches,
@@ -22,19 +27,20 @@
     clearHighlights,
   } from "../../lib/highlight";
   import { storage } from "wxt/storage";
+  import { ScrapingEngine } from "@/lib/scrapingEngine/engine";
 
   let collapsed = $state(true);
   let isDarkMode = $state(false);
   let isSelecting = $state(false);
   let selectedElements = $state<HTMLElement[]>([]);
   let hoveredElement: HTMLElement | null = null;
-  let schemas = $state<Schema[]>([]);
+  let schemas = $state<EditingSchema[]>([]);
 
   // Add new state variables for selection tracking
   let selectingFor: {
     type: "parent" | "element";
-    schema: Schema;
-    field?: Schema["Fields"][0];
+    schema: EditingSchema;
+    field?: EditingSchema["Fields"][0];
   } | null = $state(null);
 
   // Add state for tracking which schemas are open
@@ -116,8 +122,8 @@
 
   const startSelectingFor = (
     type: "parent" | "element",
-    schema: Schema,
-    field?: Schema["Fields"][0]
+    schema: EditingSchema,
+    field?: EditingSchema["Fields"][0]
   ) => {
     selectingFor = { type, schema, field };
     isSelecting = true;
@@ -140,7 +146,10 @@
       if (selectingFor.schema.ParentMatch?.matches) {
         const result = await findChildMatches(
           selectingFor.schema.ParentMatch.matches,
-          element
+          element,
+          document,
+          selectingFor.field.strategy,
+          selectingFor.field.MaxMatches
         );
         selectingFor.field.strategy = result.strategy;
         selectingFor.field.Matches = result.matches;
@@ -270,8 +279,8 @@
   });
 
   const updateChildMatches = async (
-    schema: Schema,
-    field: Schema["Fields"][0],
+    schema: EditingSchema,
+    field: EditingSchema["Fields"][0],
     strategy: MatchStrategy
   ) => {
     console.log("Updating child matches:", { field, strategy });
@@ -289,6 +298,7 @@
     const result = await findChildMatches(
       schema.ParentMatch.matches,
       field.Element,
+      document,
       strategy,
       field.MaxMatches
     );
@@ -302,7 +312,7 @@
   };
 
   const updateParentMatches = async (
-    schema: Schema,
+    schema: EditingSchema,
     strategy: MatchStrategy
   ) => {
     if (!schema.Parent) return;
@@ -314,7 +324,7 @@
       });
     }
 
-    const matches = await findMatches(schema.Parent, strategy);
+    const matches = await findMatches(schema.Parent, strategy, 3, document);
     schema.ParentMatch = {
       strategy,
       matches,
@@ -343,12 +353,12 @@
     ];
   };
 
-  const addField = (schema: Schema) => {
+  const addField = (schema: EditingSchema) => {
     schema.Fields = [
       ...schema.Fields,
       {
         Name: "New Field",
-        Type: "text",
+        Type: "text" as const,
         Element: null,
         Matches: [],
         strategy: undefined,
@@ -366,66 +376,31 @@
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
   });
+
+  // Add this validation function
+  const isCompleteSchema = (schema: EditingSchema): boolean => {
+    return !!(
+      schema.Parent &&
+      schema.ParentMatch &&
+      schema.Fields.every(
+        (field) => field.Element && field.strategy && field.Name && field.Type
+      )
+    );
+  };
+
   const evaluateSchemas = () => {
-    let schemaJSON: {
-      schemaName: string;
-      parentElement: string;
-      fields: Record<string, { text: string; href?: string }>;
-    }[] = [];
-
-    schemas.forEach((schema) => {
-      // Skip if no parent matches
-      if (!schema.ParentMatch?.matches) return;
-
-      // For each parent match
-      schema.ParentMatch.matches.forEach((parentMatch) => {
-        // Create object to store parent and its fields
-        const matchData: any = {
-          schemaName: schema.Name,
-          parentElement: parentMatch.outerHTML,
-          fields: {},
-        };
-
-        // For each field, find the matching child within this parent
-        schema.Fields.forEach((field) => {
-          if (field.Element && field.Matches) {
-            // Find the match that belongs to this parent
-            const fieldMatch = field.Matches.find((match) =>
-              parentMatch.contains(match)
-            );
-            if (fieldMatch) {
-              switch (field.Type) {
-                case "link":
-                  matchData.fields[field.Name] = {
-                    text: fieldMatch.textContent?.trim() || "",
-                    href:
-                      fieldMatch instanceof HTMLAnchorElement
-                        ? fieldMatch.href
-                        : undefined,
-                  };
-                  break;
-                case "text":
-                default:
-                  matchData.fields[field.Name] = {
-                    text: fieldMatch.textContent?.trim() || "",
-                  };
-                  break;
-              }
-            }
-          }
-        });
-
-        schemaJSON.push(matchData);
-      });
+    const completeSchemas = schemas.filter(isCompleteSchema);
+    completeSchemas.forEach((schema) => {
+      const engine = new ScrapingEngine(schema as Schema, document);
+      const results = engine.scrape();
+      console.log(results);
     });
-
-    console.log(schemaJSON);
   };
 
   const navigateElement = async (
     direction: "parent" | "child",
-    schema: Schema,
-    field?: Schema["Fields"][0]
+    schema: EditingSchema,
+    field?: EditingSchema["Fields"][0]
   ) => {
     if (field) {
       if (!field.Element) return;
@@ -436,7 +411,10 @@
           clearHighlights(field.Matches);
           const result = await findChildMatches(
             schema.ParentMatch.matches,
-            relative
+            relative,
+            document,
+            field.strategy,
+            field.MaxMatches
           );
           field.strategy = result.strategy;
           field.Matches = result.matches;
@@ -476,7 +454,7 @@
   };
 
   // Convert Schema to StoredSchema for storage
-  const schemaToStored = (schema: Schema): StoredSchema => ({
+  const schemaToStored = (schema: EditingSchema): StoredSchema => ({
     Name: schema.Name,
     Parent: schema.Parent?.outerHTML || null,
     urls: schema.urls,
@@ -502,42 +480,40 @@
   };
 
   // Convert stored schema back to runtime Schema
-  const storedToSchema = async (stored: StoredSchema): Promise<Schema> => {
-    console.log("Loading stored schema:", stored);
-
+  const storedToSchema = async (
+    stored: StoredSchema
+  ): Promise<EditingSchema> => {
     const oldParent = stored.Parent
       ? createElementFromHTML(stored.Parent)
       : null;
 
-    // Find parent matches first
     const parentMatches = oldParent
-      ? await findMatches(oldParent, stored.ParentMatch?.strategy || "exact")
+      ? await findMatches(
+          oldParent,
+          stored.ParentMatch?.strategy || "exact",
+          3,
+          document
+        )
       : [];
 
     const parentElement = parentMatches.length > 0 ? parentMatches[0] : null;
-    // Then get field elements, ensuring they're children of parent matches
+
     const fields = await Promise.all(
       stored.Fields.map(async (field) => {
-        console.log("Loading field:", field);
         let element = null;
-
         if (field.Element && parentMatches.length > 0) {
-          // Create temporary element from stored HTML
           const tempElement = createElementFromHTML(field.Element);
-
-          // Find matches within parent matches
           for (const parent of parentMatches) {
             const matches = await findMatches(
               tempElement,
-              field.strategy || "exact"
+              field.strategy || "exact",
+              3,
+              document
             );
-            // Find the first match that's actually a child of this parent
             element = matches.find((match) => parent.contains(match)) || null;
             if (element) break;
           }
         }
-
-        console.log("Found field element:", element);
 
         return {
           ...field,
@@ -551,12 +527,12 @@
       Name: stored.Name,
       urls: stored.urls,
       Parent: parentElement,
-      ParentMatch: {
-        strategy: stored.ParentMatch?.strategy || "exact",
-        matches: parentMatches.filter((match) =>
-          parentElement?.contains(match)
-        ),
-      },
+      ParentMatch: parentElement
+        ? {
+            strategy: stored.ParentMatch?.strategy || "exact",
+            matches: parentMatches,
+          }
+        : null,
       Fields: fields,
     };
   };

@@ -1,12 +1,12 @@
 <script lang="ts">
-  import type { Schema, MatchStrategy } from "../lib/types";
+  import type { Schema, MatchStrategy, EditingSchema } from "../lib/types";
   import ElementSelector from "./ElementSelector.svelte";
   import FieldInput from "./FieldInput.svelte";
 
   interface Props {
-    field: Schema["Fields"][0];
+    field: EditingSchema["Fields"][number];
     fieldIndex: number;
-    schema: Schema;
+    schema: EditingSchema;
     startSelectingFor: Function;
     navigateElement: Function;
     highlightElement: Function;

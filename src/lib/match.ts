@@ -5,23 +5,25 @@ export type MatchResult = {
   matches: HTMLElement[];
 };
 
-export const findMatches = async (
+export const findMatches = (
   element: HTMLElement,
   strategy: MatchStrategy,
-  retryCount: number = 3
-): Promise<HTMLElement[]> => {
+  retryCount: number = 3,
+  document: Document
+): HTMLElement[] => {
+  console.log("Finding matches", element, strategy);
   if (!element) return [];
 
   const tryFind = () => {
     switch (strategy) {
       case "exact":
-        return findExactMatches(element);
+        return findExactMatches(element, document);
       case "similar":
-        return findSimilarMatches(element);
+        return findSimilarMatches(element, document);
       case "xpath":
-        return findXPathMatches(element);
+        return findXPathMatches(element, document);
       case "selector":
-        return findSelectorMatches(element);
+        return findSelectorMatches(element, document);
       default:
         return [];
     }
@@ -30,26 +32,36 @@ export const findMatches = async (
   // First attempt
   let matches = tryFind();
 
-  // If no matches found, retry with delay
+  // If no matches found, retry immediately up to retryCount times
   let attempts = 0;
   while (matches.length === 0 && attempts < retryCount) {
-    await new Promise((resolve) => setTimeout(resolve, 500)); // 500ms delay
-    matches = tryFind();
-    attempts++;
+    setTimeout(() => {
+      matches = tryFind();
+      attempts++;
+    }, 500);
   }
 
   return matches;
 };
 
-const findExactMatches = (element: HTMLElement): HTMLElement[] => {
+const findExactMatches = (
+  element: HTMLElement,
+  document: Document
+): HTMLElement[] => {
+  console.log(element);
   const selector = element.tagName.toLowerCase();
+  console.log(selector);
   const classes = Array.from(element.classList).join(".");
+  console.log(classes);
   return Array.from(
     document.querySelectorAll(`${selector}${classes ? "." + classes : ""}`)
   ) as HTMLElement[];
 };
 
-const findSimilarMatches = (element: HTMLElement): HTMLElement[] => {
+const findSimilarMatches = (
+  element: HTMLElement,
+  document: Document
+): HTMLElement[] => {
   const selector = element.tagName.toLowerCase();
   const classes = Array.from(element.classList);
   if (classes.length === 0) return [];
@@ -90,7 +102,10 @@ const getXPath = (el: HTMLElement): string => {
   return "/" + parts.join("/");
 };
 
-const findXPathMatches = (element: HTMLElement): HTMLElement[] => {
+const findXPathMatches = (
+  element: HTMLElement,
+  document: Document
+): HTMLElement[] => {
   const baseXPath = getXPath(element);
   const pattern = baseXPath.replace(/\[\d+\]/g, "");
   const results = document.evaluate(
@@ -154,65 +169,29 @@ const generateSelector = (el: HTMLElement): string => {
     current = current.parentElement as HTMLElement;
   }
 
-  try {
-    const fullSelector = parts.join(" > ");
-    const parent = el.parentElement;
-    if (parent) {
-      const matches = Array.from(parent.querySelectorAll(fullSelector));
-      if (matches.length === 1 && matches[0] === el) {
-        return fullSelector;
-      }
-    }
-    return generateSpecificSelector(el);
-  } catch (e) {
-    return generateSpecificSelector(el);
-  }
-};
-
-const generateSpecificSelector = (el: HTMLElement): string => {
-  const parts: string[] = [];
-  let current = el;
-
-  while (current && current !== document.body) {
-    let selector = current.tagName.toLowerCase();
-
-    if (current.classList.length > 0) {
-      selector += `.${Array.from(current.classList).join(".")}`;
-    }
-
-    if (current.getAttribute("role")) {
-      selector += `[role="${current.getAttribute("role")}"]`;
-    }
-
-    const parent = current.parentElement;
-    if (parent) {
-      const sameTypeElements = Array.from(parent.children).filter(
-        (child) => child.tagName === current.tagName
-      );
-      if (sameTypeElements.length > 1) {
-        const index = sameTypeElements.indexOf(current) + 1;
-        selector += `:nth-of-type(${index})`;
-      }
-    }
-
-    parts.unshift(selector);
-    current = current.parentElement as HTMLElement;
-  }
-
   return parts.join(" > ");
 };
 
-const findSelectorMatches = (element: HTMLElement): HTMLElement[] => {
+const findSelectorMatches = (
+  element: HTMLElement,
+  document: Document
+): HTMLElement[] => {
   const selector = generateSelector(element);
-  return Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+  try {
+    return Array.from(document.querySelectorAll(selector)) as HTMLElement[];
+  } catch (e) {
+    console.warn("Invalid selector generated:", selector);
+    return [];
+  }
 };
 
-export const findChildMatches = async (
+export const findChildMatches = (
   parentMatches: HTMLElement[],
   childElement: HTMLElement,
+  document: Document,
   strategy?: MatchStrategy,
   maxMatches?: number
-): Promise<MatchResult> => {
+): MatchResult => {
   if (!childElement || parentMatches.length === 0)
     return {
       strategy: "exact",
@@ -281,7 +260,7 @@ export const findChildMatches = async (
   };
 
   if (strategy) {
-    const potentialMatches = await findMatches(childElement, strategy);
+    const potentialMatches = findMatches(childElement, strategy, 3, document);
     return {
       strategy,
       matches: findMatchesAtDepth(potentialMatches),
@@ -291,7 +270,7 @@ export const findChildMatches = async (
   const strategies: MatchStrategy[] = ["exact", "similar", "xpath", "selector"];
 
   for (const strat of strategies) {
-    const potentialMatches = await findMatches(childElement, strat);
+    const potentialMatches = findMatches(childElement, strat, 3, document);
     const validMatches = findMatchesAtDepth(potentialMatches);
 
     if (validMatches.length > 0) {

@@ -1,5 +1,25 @@
 export type FieldType = "text" | "link";
 
+// For schemas that are being edited/created
+export type EditingSchema = {
+  Name: string;
+  Parent: HTMLElement | null;
+  urls: string[];
+  ParentMatch: {
+    strategy: MatchStrategy;
+    matches: HTMLElement[];
+  } | null;
+  Fields: {
+    Name: string;
+    Type: FieldType;
+    Element: HTMLElement | null;
+    Matches: HTMLElement[];
+    MaxMatches?: number;
+    strategy?: MatchStrategy;
+  }[];
+};
+
+// For storing schemas
 export type StoredSchema = {
   Name: string;
   Parent: string | null;
@@ -16,21 +36,22 @@ export type StoredSchema = {
   }[];
 };
 
+// For complete schemas ready for scraping
 export type Schema = {
   Name: string;
-  Parent: HTMLElement | null;
+  Parent: HTMLElement;
   urls: string[];
   ParentMatch: {
     strategy: MatchStrategy;
     matches: HTMLElement[];
-  } | null;
+  };
   Fields: {
     Name: string;
     Type: FieldType;
-    Element: HTMLElement | null;
+    Element: HTMLElement;
     Matches: HTMLElement[];
     MaxMatches?: number;
-    strategy?: MatchStrategy;
+    strategy: MatchStrategy;
   }[];
 };
 
