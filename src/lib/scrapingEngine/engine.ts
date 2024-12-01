@@ -1,85 +1,67 @@
-import puppeteer from "puppeteer";
+import type { StoredSchema, MatchStrategy } from "../types";
 import { findMatches, findChildMatches } from "../match";
-import type { Schema } from "../types";
 
 export class ScrapingEngine {
-  schema: Schema;
-  document: Document;
+  private schema: StoredSchema;
+  private document: Document;
 
-  constructor(schema: Schema, document: Document) {
+  constructor(schema: StoredSchema, document: Document) {
     this.schema = schema;
     this.document = document;
-    console.log(this.schema.Parent.outerHTML);
-    const parentMatches = findMatches(
-      schema.ParentMatch.matches[0],
-      schema.ParentMatch.strategy ?? "exact",
-      2,
-      document
-    );
-    if (parentMatches.length === 0) {
-      throw new Error("Parent element not found");
-    }
-    this.schema.Parent = parentMatches[0];
-
-    for (const field of schema.Fields) {
-      const fieldMatches = findMatches(
-        field.Element,
-        field.strategy ?? "exact",
-        2,
-        document
-      );
-      field.Matches = fieldMatches;
-    }
-    console.log("Schema Initialized", this.schema);
-    console.log(
-      `Found ${this.schema.Fields.flatMap((f) => f.Matches).length} matches`
-    );
   }
 
-  private createElementFromHTML(htmlString: string): HTMLElement {
+  private createElementFromHTML(htmlString: string | null): HTMLElement | null {
+    if (!htmlString) return null;
     const div = this.document.createElement("div");
     div.innerHTML = htmlString.trim();
-    return (div.firstElementChild as HTMLElement) || div;
+    return div.firstElementChild as HTMLElement;
   }
 
-  scrape(): ScrapeResult[] {
-    console.log("Scraping", this.schema);
-    let results: ScrapeResult[] = [];
-    this.schema.ParentMatch.matches.forEach((parentMatch) => {
-      const fields: ScrapeResult["fields"] = {};
+  async scrape() {
+    const parentElement = this.createElementFromHTML(this.schema.Parent);
+    if (!parentElement || !this.schema.ParentMatch?.strategy) {
+      return [];
+    }
 
-      this.schema.Fields.forEach((field) => {
-        const fieldMatch = field.Matches.find((match) =>
-          parentMatch.contains(match)
-        );
-        if (fieldMatch) {
-          fields[field.Name] = {
-            text: fieldMatch.textContent?.trim() || "",
-            href:
-              field.Type === "link"
-                ? (fieldMatch as HTMLAnchorElement).href
-                : undefined,
-          };
+    const parentMatches = findMatches(
+      parentElement,
+      this.schema.ParentMatch.strategy,
+      3,
+      this.document
+    );
+
+    const results = await Promise.all(
+      parentMatches.map(async (parent) => {
+        const result: Record<string, string | string[]> = {};
+
+        for (const field of this.schema.Fields) {
+          const fieldElement = this.createElementFromHTML(field.Element);
+          if (!fieldElement || !field.strategy) continue;
+
+          const matchResult = await findChildMatches(
+            [parent],
+            fieldElement,
+            this.document,
+            field.strategy,
+            field.MaxMatches
+          );
+
+          if (field.Type === "text") {
+            result[field.Name] = matchResult.matches.map(
+              (el: HTMLElement) => el.textContent?.trim() || ""
+            );
+          } else if (field.Type === "link") {
+            result[field.Name] = matchResult.matches.map((el: HTMLElement) => {
+              const anchor = el.closest("a");
+              return anchor?.href || "";
+            });
+          }
         }
-      });
 
-      if (Object.keys(fields).length > 0) {
-        results.push({
-          SchemaName: this.schema.Name,
-          fields,
-        });
-      }
-    });
+        return result;
+      })
+    );
+
     return results;
   }
 }
-
-type ScrapeResult = {
-  SchemaName: string;
-  fields: {
-    [key: string]: {
-      text: string;
-      href?: string;
-    };
-  };
-};

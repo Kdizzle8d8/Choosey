@@ -1,7 +1,8 @@
 export type FieldType = "text" | "link";
+export type MatchStrategy = "exact";
 
-// For schemas that are being edited/created
-export type EditingSchema = {
+// For schemas that are being edited/displayed in the UI
+export type RuntimeSchema = {
   Name: string;
   Parent: HTMLElement | null;
   urls: string[];
@@ -14,15 +15,15 @@ export type EditingSchema = {
     Type: FieldType;
     Element: HTMLElement | null;
     Matches: HTMLElement[];
-    MaxMatches?: number;
+    MaxMatches: number;
     strategy?: MatchStrategy;
   }[];
 };
 
-// For storing schemas
+// For storing schemas and using in the scraping engine
 export type StoredSchema = {
   Name: string;
-  Parent: string | null;
+  Parent: string | null; // HTML string
   urls: string[];
   ParentMatch: {
     strategy: MatchStrategy;
@@ -30,29 +31,8 @@ export type StoredSchema = {
   Fields: {
     Name: string;
     Type: FieldType;
-    Element: string | null;
-    MaxMatches?: number;
+    Element: string | null; // HTML string
+    MaxMatches: number;
     strategy?: MatchStrategy;
   }[];
 };
-
-// For complete schemas ready for scraping
-export type Schema = {
-  Name: string;
-  Parent: HTMLElement;
-  urls: string[];
-  ParentMatch: {
-    strategy: MatchStrategy;
-    matches: HTMLElement[];
-  };
-  Fields: {
-    Name: string;
-    Type: FieldType;
-    Element: HTMLElement;
-    Matches: HTMLElement[];
-    MaxMatches?: number;
-    strategy: MatchStrategy;
-  }[];
-};
-
-export type MatchStrategy = "exact" | "similar" | "xpath" | "selector";

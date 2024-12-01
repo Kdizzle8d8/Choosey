@@ -6,35 +6,45 @@
     onHover: (isHovering: boolean) => void;
   }
 
-  let { element, onSelect, onNavigate, onHover }: Props = $props();
+  let {
+    element,
+    onSelect,
+    onNavigate,
+    onHover,
+    class: className = "",
+  } = $props();
 </script>
 
-<div class="flex-1 flex items-center gap-2">
-  <button
-    class="px-2 opacity-50 hover:opacity-100 transition-opacity disabled:opacity-25"
-    onclick={() => onNavigate("parent")}
-    disabled={!element}
-    title="Select parent element"
-  >
-    ↑
-  </button>
-  <button
-    class={`
-      flex-1 text-sm text-inherit/90 bg-black/10 border rounded px-2 py-1 cursor-pointer
-      ${element ? "border-black/10" : "border-blue-400/40 border-2 border-dashed"}
-    `}
-    onclick={onSelect}
-    onmouseenter={() => onHover(true)}
-    onmouseleave={() => onHover(false)}
-  >
-    {element ? element.tagName : "Click to select element"}
-  </button>
-  <button
-    class="px-2 opacity-50 hover:opacity-100 transition-opacity disabled:opacity-25"
-    onclick={() => onNavigate("child")}
-    disabled={!element}
-    title="Select child element"
-  >
-    ↓
-  </button>
+<div class="flex flex-1 w-full flex-col gap-1">
+  <label class="text-xs text-inherit/70">Element</label>
+  <div class="flex gap-1">
+    <button
+      class="flex-1 px-2 py-1 text-left rounded text-sm bg-black/10 border border-black/10 truncate {className}"
+      onclick={onSelect}
+      onmouseenter={() => onHover(true)}
+      onmouseleave={() => onHover(false)}
+    >
+      {#if element}
+        {element.tagName.toUpperCase()}
+      {:else}
+        Select element...
+      {/if}
+    </button>
+    <div class="flex gap-1">
+      <button
+        class="px-2 py-1 rounded text-sm bg-black/10 border border-black/10 hover:bg-black/20"
+        onclick={() => onNavigate("parent")}
+        title="Select parent element"
+      >
+        ↑
+      </button>
+      <button
+        class="px-2 py-1 rounded text-sm bg-black/10 border border-black/10 hover:bg-black/20"
+        onclick={() => onNavigate("child")}
+        title="Select child element"
+      >
+        ↓
+      </button>
+    </div>
+  </div>
 </div>

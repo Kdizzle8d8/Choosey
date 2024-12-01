@@ -8,12 +8,12 @@
   let { label, value, onChange }: Props = $props();
 </script>
 
-<div class="flex items-center gap-3">
-  <span class="text-sm text-inherit/70">{label}</span>
+<div class="flex flex-col gap-1">
+  <label class="text-xs text-inherit/70">{label}</label>
   <input
     type="text"
+    class="px-2 py-1 rounded text-sm bg-black/10 border border-black/10"
     {value}
-    onchange={(e) => onChange(e.currentTarget.value)}
-    class="flex-1 bg-black/10 border border-black/10 rounded px-2 py-1 text-inherit text-sm focus:outline-none focus:border-blue-400/40"
+    on:input={(e) => onChange(e.currentTarget.value)}
   />
 </div>

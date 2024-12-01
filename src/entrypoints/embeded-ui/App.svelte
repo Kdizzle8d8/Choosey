@@ -8,10 +8,9 @@
   import ActionButton from "../../components/ActionButton.svelte";
   import SchemaField from "../../components/SchemaField.svelte";
   import type {
-    Schema,
+    RuntimeSchema,
     MatchStrategy,
     StoredSchema,
-    EditingSchema,
   } from "../../lib/types";
   import {
     findMatches,
@@ -34,13 +33,13 @@
   let isSelecting = $state(false);
   let selectedElements = $state<HTMLElement[]>([]);
   let hoveredElement: HTMLElement | null = null;
-  let schemas = $state<EditingSchema[]>([]);
+  let schemas = $state<RuntimeSchema[]>([]);
 
   // Add new state variables for selection tracking
   let selectingFor: {
     type: "parent" | "element";
-    schema: EditingSchema;
-    field?: EditingSchema["Fields"][0];
+    schema: RuntimeSchema;
+    field?: RuntimeSchema["Fields"][0];
   } | null = $state(null);
 
   // Add state for tracking which schemas are open
@@ -57,19 +56,6 @@
           // Clear child matches
           schema.Fields.forEach((field) => {
             clearHighlights(field.Matches);
-          });
-        }
-      });
-    } else {
-      // Re-run matches when opening
-      schemas.forEach((schema) => {
-        if (schema.Parent && schema.ParentMatch?.strategy) {
-          updateParentMatches(schema, schema.ParentMatch.strategy);
-
-          schema.Fields.forEach((field) => {
-            if (field.Element && field.strategy) {
-              updateChildMatches(schema, field, field.strategy);
-            }
           });
         }
       });
@@ -122,8 +108,8 @@
 
   const startSelectingFor = (
     type: "parent" | "element",
-    schema: EditingSchema,
-    field?: EditingSchema["Fields"][0]
+    schema: RuntimeSchema,
+    field?: RuntimeSchema["Fields"][0]
   ) => {
     selectingFor = { type, schema, field };
     isSelecting = true;
@@ -279,8 +265,8 @@
   });
 
   const updateChildMatches = async (
-    schema: EditingSchema,
-    field: EditingSchema["Fields"][0],
+    schema: RuntimeSchema,
+    field: RuntimeSchema["Fields"][0],
     strategy: MatchStrategy
   ) => {
     console.log("Updating child matches:", { field, strategy });
@@ -312,7 +298,7 @@
   };
 
   const updateParentMatches = async (
-    schema: EditingSchema,
+    schema: RuntimeSchema,
     strategy: MatchStrategy
   ) => {
     if (!schema.Parent) return;
@@ -340,7 +326,7 @@
     }
   };
 
-  const createSchema = () => {
+  const createSchema = (): void => {
     schemas = [
       ...schemas,
       {
@@ -353,7 +339,7 @@
     ];
   };
 
-  const addField = (schema: EditingSchema) => {
+  const addField = (schema: RuntimeSchema) => {
     schema.Fields = [
       ...schema.Fields,
       {
@@ -361,6 +347,7 @@
         Type: "text" as const,
         Element: null,
         Matches: [],
+        MaxMatches: 1,
         strategy: undefined,
       },
     ];
@@ -378,7 +365,7 @@
   });
 
   // Add this validation function
-  const isCompleteSchema = (schema: EditingSchema): boolean => {
+  const isCompleteSchema = (schema: RuntimeSchema): boolean => {
     return !!(
       schema.Parent &&
       schema.ParentMatch &&
@@ -388,19 +375,19 @@
     );
   };
 
-  const evaluateSchemas = () => {
+  const evaluateSchemas = async () => {
     const completeSchemas = schemas.filter(isCompleteSchema);
-    completeSchemas.forEach((schema) => {
-      const engine = new ScrapingEngine(schema as Schema, document);
-      const results = engine.scrape();
+    for (const schema of completeSchemas) {
+      const engine = new ScrapingEngine(schemaToStored(schema), document);
+      const results = await engine.scrape();
       console.log(results);
-    });
+    }
   };
 
   const navigateElement = async (
     direction: "parent" | "child",
-    schema: EditingSchema,
-    field?: EditingSchema["Fields"][0]
+    schema: RuntimeSchema,
+    field?: RuntimeSchema["Fields"][0]
   ) => {
     if (field) {
       if (!field.Element) return;
@@ -454,7 +441,7 @@
   };
 
   // Convert Schema to StoredSchema for storage
-  const schemaToStored = (schema: EditingSchema): StoredSchema => ({
+  const schemaToStored = (schema: RuntimeSchema): StoredSchema => ({
     Name: schema.Name,
     Parent: schema.Parent?.outerHTML || null,
     urls: schema.urls,
@@ -482,7 +469,7 @@
   // Convert stored schema back to runtime Schema
   const storedToSchema = async (
     stored: StoredSchema
-  ): Promise<EditingSchema> => {
+  ): Promise<RuntimeSchema> => {
     const oldParent = stored.Parent
       ? createElementFromHTML(stored.Parent)
       : null;
@@ -583,7 +570,7 @@
   class:translate-x-full={collapsed}
 >
   <main
-    class="backdrop-blur-md bg-white/30 border-4 border-r-0 border-blue-400/40 shadow-lg rounded-l-2xl p-8 w-[500px] h-[800px] relative glow-border overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"
+    class="backdrop-blur-md bg-white/30 border-4 border-r-0 border-blue-400/40 shadow-lg rounded-l-2xl p-8 w-[600px] h-[800px] relative glow-border overflow-y-auto scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"
   >
     <button
       aria-label="Toggle collapse"
@@ -680,39 +667,17 @@
                 transitionConfig={{ duration: 200 }}
                 class="p-4 space-y-3 rounded-lg border-t-0 border border-black/20 backdrop-blur-sm rounded-t-none bg-black/20"
               >
-                <div class="flex items-center gap-3">
-                  <span class="text-sm text-inherit/70">Parent</span>
+                <div class="flex w-full items-center gap-3">
                   <ElementSelector
                     element={schema.Parent}
                     onSelect={() => startSelectingFor("parent", schema)}
-                    onNavigate={(direction) =>
+                    onNavigate={(direction: "parent" | "child") =>
                       navigateElement(direction, schema)}
-                    onHover={(isHovering) =>
+                    onHover={(isHovering: boolean) =>
                       isHovering
                         ? highlightElement(schema.Parent)
                         : clearHighlight(schema.Parent)}
                   />
-
-                  {#if schema.Parent}
-                    <div class="flex gap-1">
-                      {#snippet matchButton(
-                        strategy: MatchStrategy,
-                        symbol: string
-                      )}
-                        <button
-                          class="px-2 py-1 rounded text-sm text-inherit/70 transition-all duration-300 hover:bg-black/20 border border-black/10"
-                          onclick={() => updateParentMatches(schema, strategy)}
-                        >
-                          {symbol}
-                        </button>
-                      {/snippet}
-
-                      {@render matchButton("exact", "=")}
-                      {@render matchButton("similar", "≈")}
-                      {@render matchButton("xpath", "/")}
-                      {@render matchButton("selector", "#")}
-                    </div>
-                  {/if}
                 </div>
 
                 {#if schema.ParentMatch && schema.ParentMatch.matches.length > 0}
